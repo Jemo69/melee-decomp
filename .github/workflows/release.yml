@@ -116,7 +116,13 @@ jobs:
     name: Publish GitHub Release
     needs: [build-windows, build-android]
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
+      # gh needs a git checkout to resolve the target repository.
+      - name: Check out repository
+        uses: actions/checkout@v4
+
       - uses: actions/download-artifact@v4
         with:
           path: artifacts
