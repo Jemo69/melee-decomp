@@ -23,7 +23,11 @@ and shows the returned string in a TextView.
 `.github/workflows/release.yml` builds the APK on `ubuntu-latest` (JDK 17,
 Python 3.11, Gradle 8.9, Android SDK 35) via `gradle :app:assembleRelease` in
 `build/android`, signs it with an ephemeral self-signed key, and attaches it
-to the GitHub Release automatically when a `v*` tag is pushed.
+to the GitHub Release automatically when a `v*` tag is pushed. The workflow
+resolves `sdkmanager` from `$ANDROID_SDK_ROOT/cmdline-tools/latest/bin`
+(using the runner's preinstalled copy when present, otherwise downloading the
+command line tools) before installing the `platform-tools`,
+`platforms;android-35` and `build-tools;35.0.0` packages.
 
 Note: there is no `gradlew` wrapper script checked in. CI installs Gradle 8.9
 via `gradle/actions/setup-gradle`; for local builds, install Gradle 8.9 (or
