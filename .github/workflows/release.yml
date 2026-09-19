@@ -1,0 +1,136 @@
+# Builds the Windows exe and the Android APK, then publishes both on a
+# GitHub Release. Triggered by pushing a version tag:
+#
+#   git tag v1.0.0 && git push origin v1.0.0
+name: Build and release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write  # needed to create the GitHub Release and upload assets
+
+jobs:
+  build-windows:
+    name: Windows exe
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install build dependencies
+        run: pip install -r build/windows/requirements.txt
+
+      - name: Build exe with PyInstaller
+        run: pyinstaller build/windows/melee-agent.spec --noconfirm --clean
+
+      - name: Smoke test
+        run: dist\melee-agent.exe --help
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: melee-agent-windows
+          path: dist/melee-agent.exe
+          if-no-files-found: error
+
+  build-android:
+    name: Android APK
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Python 3.11 (build machine)
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Set up Gradle 8.9
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.9"
+
+      - name: Install Android SDK packages
+        run: |
+          yes | sdkmanager --licenses > /dev/null
+          sdkmanager "platform-tools" "platforms;android-35" "build-tools;35.0.0"
+
+      - name: Generate ephemeral signing key
+        id: keystore
+        run: |
+          PASS="$(openssl rand -base64 18)"
+          echo "MELEE_KEYSTORE_PASSWORD=$PASS" >> "$GITHUB_ENV"
+          keytool -genkeypair -v \
+            -keystore "$RUNNER_TEMP/release.keystore" \
+            -alias melee -keyalg RSA -keysize 2048 -validity 10000 \
+            -storepass "$PASS" -keypass "$PASS" \
+            -dname "CN=melee-decomp"
+
+      - name: Build release APK
+        working-directory: build/android
+        run: |
+          TAG="${{ github.ref_name }}"
+          gradle :app:assembleRelease -PversionName="${TAG#v}" --no-daemon
+        env:
+          MELEE_KEYSTORE_PATH: ${{ runner.temp }}/release.keystore
+          MELEE_KEYSTORE_PASSWORD: ${{ env.MELEE_KEYSTORE_PASSWORD }}
+          MELEE_KEY_ALIAS: melee
+          MELEE_KEY_PASSWORD: ${{ env.MELEE_KEYSTORE_PASSWORD }}
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: melee-agent-android
+          path: build/android/app/build/outputs/apk/release/app-release.apk
+          if-no-files-found: error
+
+  publish-release:
+    name: Publish GitHub Release
+    needs: [build-windows, build-android]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: Rename assets
+        run: |
+          mv artifacts/melee-agent.exe artifacts/melee-agent-windows.exe
+          mv artifacts/app-release.apk artifacts/melee-agent-android.apk
+          ls -la artifacts
+
+      - name: Create or update release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${{ github.ref_name }}"
+          NOTES="## melee-agent ${TAG}
+          Agent tooling for the Super Smash Bros. Melee decompilation project.
+
+          ### Downloads
+          - **melee-agent-windows.exe** — single-file Windows executable (no Python install needed). Run it from Command Prompt / PowerShell, e.g. \`melee-agent-windows.exe --help\`.
+          - **melee-agent-android.apk** — Android app wrapping the CLI. Type CLI arguments (e.g. \`--help\`, \`extract list\`) and tap Run.
+
+          ### Notes
+          - The Windows exe is unsigned: Windows SmartScreen may show a warning on first run.
+          - The APK is self-signed with an ephemeral key: Android will ask you to allow installs from unknown sources. Each release is signed with a fresh key, so uninstall the previous version before upgrading.
+          - On Android, tree-sitter is not bundled; the CLI falls back to regex-based C parsing automatically."
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Release $TAG already exists, uploading assets to it."
+            gh release upload "$TAG" \
+              artifacts/melee-agent-windows.exe artifacts/melee-agent-android.apk \
+              --clobber
+          else
+            gh release create "$TAG" --title "melee-agent $TAG" --notes "$NOTES" \
+              artifacts/melee-agent-windows.exe artifacts/melee-agent-android.apk
+          fi
