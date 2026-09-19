@@ -4,7 +4,6 @@ __pycache__/
 *$py.class
 *.so
 .Python
-build/
 develop-eggs/
 dist/
 downloads/
@@ -19,6 +18,16 @@ wheels/
 *.egg-info/
 .installed.cfg
 *.egg
+
+# Build outputs (but NOT the packaging configs under build/windows and
+# build/android, which are committed so CI can produce releases)
+build/
+!build/
+build/*
+!build/windows/
+!build/android/
+# Generated at build time by the copyPythonSrc Gradle task:
+build/android/app/src/main/python/src/
 
 # Virtual environments
 .env
