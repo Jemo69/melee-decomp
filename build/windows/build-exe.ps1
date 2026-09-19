@@ -14,7 +14,11 @@ Set-Location $RepoRoot
 
 Write-Host "==> Installing build dependencies..." -ForegroundColor Cyan
 python -m pip install --upgrade pip
-python -m pip install -r build/windows/requirements.txt
+# Install from inside build/windows: the `-e ../..` line in requirements.txt
+# is resolved relative to the current directory, not the file's location.
+Push-Location (Join-Path $RepoRoot "build/windows")
+python -m pip install -r requirements.txt
+Pop-Location
 
 Write-Host "==> Building melee-agent.exe with PyInstaller..." -ForegroundColor Cyan
 python -m PyInstaller build/windows/melee-agent.spec --noconfirm --clean
