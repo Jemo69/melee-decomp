@@ -48,7 +48,7 @@ public class MainActivity extends Activity {
         outputView.setText("Running: melee-decomp " + args + "\n\n…");
 
         new Thread(() -> {
-            final String result;
+            String result;
             try {
                 if (!Python.isStarted()) {
                     Python.start(new AndroidPlatform(MainActivity.this));
