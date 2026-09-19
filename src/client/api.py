@@ -1,11 +1,35 @@
 """Async HTTP client for the decomp.me REST API."""
 
-import fcntl
 import json
 import logging
 import os
 from pathlib import Path
 from typing import Any
+
+try:
+    import fcntl
+except ImportError:
+    # Windows has no fcntl (Unix-only). Cookie file locking below becomes a
+    # no-op there; the CLI is single-user on Windows so this is safe.
+    fcntl = None
+
+
+def _lock_shared(f) -> None:
+    """Acquire a shared lock on an open file (no-op where fcntl is missing)."""
+    if fcntl is not None:
+        fcntl.flock(f.fileno(), fcntl.LOCK_SH)
+
+
+def _lock_exclusive(f) -> None:
+    """Acquire an exclusive lock on an open file (no-op where fcntl is missing)."""
+    if fcntl is not None:
+        fcntl.flock(f.fileno(), fcntl.LOCK_EX)
+
+
+def _unlock(f) -> None:
+    """Release a lock on an open file (no-op where fcntl is missing)."""
+    if fcntl is not None:
+        fcntl.flock(f.fileno(), fcntl.LOCK_UN)
 
 import httpx
 from pydantic import TypeAdapter
@@ -98,11 +122,11 @@ def _load_cookies() -> dict[str, str]:
 
     try:
         with open(cookies_path, 'r') as f:
-            fcntl.flock(f.fileno(), fcntl.LOCK_SH)  # Shared lock for reading
+            _lock_shared(f)  # Shared lock for reading
             try:
                 return json.load(f)
             finally:
-                fcntl.flock(f.fileno(), fcntl.LOCK_UN)
+                _unlock(f)
     except (json.JSONDecodeError, IOError):
         return {}
 
@@ -127,7 +151,7 @@ def _save_cookies(cookies: dict[str, str], preserve_sessionid: bool = True) -> N
     lock_path.touch(exist_ok=True)
 
     with open(lock_path, 'r') as lock_f:
-        fcntl.flock(lock_f.fileno(), fcntl.LOCK_EX)  # Exclusive lock
+        _lock_exclusive(lock_f)  # Exclusive lock
         try:
             # Read existing cookies first (merge, don't overwrite)
             existing = {}
@@ -151,7 +175,7 @@ def _save_cookies(cookies: dict[str, str], preserve_sessionid: bool = True) -> N
             with open(cookies_path, 'w') as f:
                 json.dump(existing, f, indent=2)
         finally:
-            fcntl.flock(lock_f.fileno(), fcntl.LOCK_UN)
+            _unlock(lock_f)
 
 
 class DecompMeAPIClient:
@@ -482,7 +506,7 @@ class DecompMeAPIClient:
             compiler: Optional compiler override
 
         Returns:
-            Decompilation result
+            Compilation result with diff output
 
         Raises:
             DecompMeAPIError: If decompilation fails
@@ -589,7 +613,6 @@ class DecompMeAPIClient:
 
         Args:
             slug: Scratch slug/ID
-            target_only: If True, exclude current.o from export
 
         Returns:
             ZIP file bytes
