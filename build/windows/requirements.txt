@@ -1,0 +1,4 @@
+# Windows build requirements: the project itself plus PyInstaller.
+# Install with: pip install -r build/windows/requirements.txt
+-e ../..
+pyinstaller>=6.0
