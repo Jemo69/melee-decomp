@@ -4,10 +4,16 @@ Provides cross-process file locking using fcntl to prevent race conditions
 when multiple agents access shared resources like claims or token files.
 """
 
-import fcntl
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Generator, Literal
+
+try:
+    import fcntl
+except ImportError:
+    # Windows has no fcntl (Unix-only). Locking below becomes a best-effort
+    # no-op; the CLI is single-user on Windows so this is safe.
+    fcntl = None
 
 
 @contextmanager
@@ -41,6 +47,11 @@ def file_lock(
 
     lock_path.parent.mkdir(parents=True, exist_ok=True)
     lock_path.touch(exist_ok=True)
+
+    if fcntl is None:
+        # No OS-level locking available (Windows): proceed without locking.
+        yield
+        return
 
     lock_type = fcntl.LOCK_EX if exclusive else fcntl.LOCK_SH
 
@@ -92,13 +103,19 @@ def locked_file(
     if exclusive is None:
         exclusive = mode in ("w", "a")
 
-    lock_type = fcntl.LOCK_EX if exclusive else fcntl.LOCK_SH
-
     file_path.parent.mkdir(parents=True, exist_ok=True)
 
     # For write mode, we need to create the file if it doesn't exist
     if mode in ("w", "a") and not file_path.exists():
         file_path.touch()
+
+    if fcntl is None:
+        # No OS-level locking available (Windows): open without locking.
+        with open(file_path, mode) as f:
+            yield f
+        return
+
+    lock_type = fcntl.LOCK_EX if exclusive else fcntl.LOCK_SH
 
     with open(file_path, mode) as f:
         try:
