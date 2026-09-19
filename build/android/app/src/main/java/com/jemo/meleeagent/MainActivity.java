@@ -68,8 +68,10 @@ public class MainActivity extends Activity {
                 result = "Java-side error: " + e + "\n";
             }
 
+            // final copy: lambdas can only capture final/effectively-final locals
+            final String output = result;
             runOnUiThread(() -> {
-                outputView.setText(result);
+                outputView.setText(output);
                 runButton.setEnabled(true);
                 outputScroll.post(() -> outputScroll.fullScroll(View.FOCUS_UP));
             });
