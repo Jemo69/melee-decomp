@@ -61,6 +61,23 @@ melee-decomp/
 └── pyproject.toml             # Python project config
 ```
 
+## Releases (Windows & Android)
+
+Prebuilt binaries are published on the
+[GitHub Releases](https://github.com/Jemo69/melee-decomp/releases) page:
+
+- **Windows** — `melee-agent-windows.exe`: single-file executable, no Python
+  install needed. Run it from Command Prompt / PowerShell, e.g.
+  `melee-agent-windows.exe --help`. (Unsigned: SmartScreen may warn on first run.)
+- **Android** — `melee-agent-android.apk`: app wrapping the CLI. Type CLI
+  arguments (e.g. `--help`, `extract list`) and tap Run. (Self-signed:
+  allow installs from unknown sources; uninstall the previous version before
+  upgrading, since each release uses a fresh signing key.)
+
+Releases are built automatically by `.github/workflows/release.yml` whenever a
+`v*` tag is pushed. Packaging configs live in [`build/`](build/) —
+PyInstaller spec for Windows, Chaquopy Gradle project for Android.
+
 ## Installation
 
 ### Prerequisites
